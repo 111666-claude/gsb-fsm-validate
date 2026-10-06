@@ -12,32 +12,48 @@ class Counter:
 
 
 def analyze(rows, counter):
-    states = []
-    for frm, _, to in rows:
-        for item in (frm, to):
-            if item not in states:
-                states.append(item)
-    incoming = {}
-    for target in states:
-        names = []
-        for frm, _, to in rows:
-            counter.scanned += 1
-            if to == target:
-                names.append(frm)
-        incoming[target] = names
-    reachable = [START]
-    for frm, _, to in rows:
+    unique_rows = []
+    seen = set()
+    for row in rows:
         counter.scanned += 1
-        if frm == START and to not in reachable:
-            reachable.append(to)
-    unreachable = [s for s in states if s not in reachable]
+        if row not in seen:
+            seen.add(row)
+            unique_rows.append(row)
+
+    states = set()
+    adjacency = {}
+    choices = {}
+    for frm, event, to in unique_rows:
+        counter.scanned += 1
+        states.add(frm)
+        states.add(to)
+        adjacency.setdefault(frm, []).append((event, to))
+        choices.setdefault((frm, event), set()).add(to)
+
+    reachable = {START}
+    stack = [START]
+    while stack:
+        current = stack.pop()
+        for _, target in adjacency.get(current, ()):
+            if target not in reachable:
+                reachable.add(target)
+                stack.append(target)
+
+    nondet = sorted("%s:%s" % key
+                    for key, targets in choices.items()
+                    if len(targets) > 1)
+    dead = sorted(state for state in states
+                  if state in reachable
+                  and state not in FINAL
+                  and state not in adjacency)
+    unreachable = sorted(states - reachable)
     return {
         "states": sorted(states),
         "reachable": sorted(reachable),
-        "unreachable": sorted(unreachable),
-        "dead": [],
-        "nondet": [],
-        "transitions": len(rows),
+        "unreachable": unreachable,
+        "dead": dead,
+        "nondet": nondet,
+        "transitions": len(unique_rows),
         "scanned": counter.scanned,
     }
 

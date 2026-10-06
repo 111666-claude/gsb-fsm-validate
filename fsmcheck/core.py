@@ -1,5 +1,7 @@
 """可达性、死状态与不确定转移的检查。"""
 
+from collections import deque
+
 START = "start"
 FINAL = frozenset(["done"])
 
@@ -12,32 +14,51 @@ class Counter:
 
 
 def analyze(rows, counter):
+    seen = set()
+    transitions = []
+    for row in rows:
+        counter.scanned += 1
+        if row in seen:
+            continue
+        seen.add(row)
+        transitions.append(row)
+
     states = []
-    for frm, _, to in rows:
+    for frm, _, to in transitions:
         for item in (frm, to):
             if item not in states:
                 states.append(item)
-    incoming = {}
-    for target in states:
-        names = []
-        for frm, _, to in rows:
-            counter.scanned += 1
-            if to == target:
-                names.append(frm)
-        incoming[target] = names
+
+    outgoing = {}
+    for frm, event, to in transitions:
+        outgoing.setdefault(frm, []).append((event, to))
+
     reachable = [START]
-    for frm, _, to in rows:
-        counter.scanned += 1
-        if frm == START and to not in reachable:
-            reachable.append(to)
+    queue = deque([START])
+    while queue:
+        current = queue.popleft()
+        for _, to in outgoing.get(current, ()):
+            if to not in reachable:
+                reachable.append(to)
+                queue.append(to)
+
     unreachable = [s for s in states if s not in reachable]
+    dead = [s for s in states
+            if s in reachable and s not in FINAL and not outgoing.get(s)]
+
+    counts = {}
+    for frm, event, _ in transitions:
+        key = (frm, event)
+        counts[key] = counts.get(key, 0) + 1
+    nondet = ["%s:%s" % key for key, n in counts.items() if n > 1]
+
     return {
         "states": sorted(states),
         "reachable": sorted(reachable),
         "unreachable": sorted(unreachable),
-        "dead": [],
-        "nondet": [],
-        "transitions": len(rows),
+        "dead": sorted(dead),
+        "nondet": sorted(nondet),
+        "transitions": len(transitions),
         "scanned": counter.scanned,
     }
 
